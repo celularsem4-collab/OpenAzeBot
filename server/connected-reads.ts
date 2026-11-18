@@ -69,7 +69,6 @@ const MESSAGE_WORD = /\b(?:message|email|thread)\b/i;
 const MISSING_WORD = /\b(?:not found|deleted|no longer exists)\b/i;
 const OTHER_SUBJECT = /\b(?:account|connect|o?auth|token|permission|scope|credential|tool|integration)/i;
 const MULTI_EXECUTE = "COMPOSIO_MULTI_EXECUTE_TOOL";
-const CALL_ID = "omb-check-call";
 const PREVIEW_MAX = 300;
 const ADDRESS = /^[\w.+][\w.+-]*@[\w-]+(?:\.[\w-]+)+$/;
 const PRIMARY_CALENDAR = { id: "primary", name: "primary", primary: true, owned: true, read: true } as const;
@@ -344,6 +343,7 @@ export function createConnectedReads(deps: ConnectedReadDeps): ConnectedReads {
 
   function session(): ReadSession {
     let opened: Promise<string | undefined> | undefined;
+    let requestNumber = 0;
 
     async function open(signal: AbortSignal): Promise<string | undefined> {
       const init = await deps.relay({
@@ -367,12 +367,15 @@ export function createConnectedReads(deps: ConnectedReadDeps): ConnectedReads {
           throw error;
         });
         const transport = await opened;
+        const callId = "omb-check-call-" + ++requestNumber;
         const answer = await deps.relay({
-          jsonrpc: "2.0", id: CALL_ID, method: "tools/call",
+          jsonrpc: "2.0", id: callId, method: "tools/call",
           params: { name: MULTI_EXECUTE, arguments: { tools: [{ tool_slug: slug, arguments: args }] } },
         }, transport, signal);
         if (answer.status !== 200) throw new Error(`${slug} answered HTTP ${answer.status}`);
-        return toolData(slug, parseMcpResponse(new TextDecoder().decode(answer.bytes), CALL_ID));
+        const frame = parseMcpResponse(new TextDecoder().decode(answer.bytes), callId);
+        if (frame && frame.id !== callId) throw new Error(slug + ": unexpected response id");
+        return toolData(slug, frame);
       } catch (error) {
         if (error instanceof SourceError) throw error;
         if (gone && error instanceof ToolAnswerError && gone(error.message)) return GONE;

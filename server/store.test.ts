@@ -1686,6 +1686,17 @@ describe("Store", () => {
     expect(store.setActiveLeaf(bot.threadId, "nope")).toBeNull();
   });
 
+  it("bounds traversal of a cyclic transcript and keeps the selected leaf on a failed switch", () => {
+    const store = new Store(selection);
+    const { threadId } = store.createBot();
+    const a = store.appendMessage(threadId, { role: "user", kind: "text", text: "a" });
+    const b = store.appendMessage(threadId, { role: "bot", kind: "text", text: "b" });
+    store.patchMessage(threadId, a.id, { parentId: b.id });
+    expect(store.setActiveLeaf(threadId, a.id)).toBeNull();
+    expect(store.activeLeaf(threadId)).toBe(b.id);
+    expect(store.activePath(threadId).map(message => message.id)).toEqual([a.id, b.id]);
+  });
+
   it("persists the branch tree and active leaf across a restart", () => {
     const store = new Store(selection);
     const bot = store.createBot();

@@ -11210,7 +11210,7 @@ function deliverCalendarCall(call: CalendarCall, scheduledFor: number): void {
   startGroupTurn(group.id, text, undefined, sendId);
 }
 
-function resolveReplyTarget(threadId: string, value: unknown): Message | undefined { return replyTargetIn(store.messagesFor(threadId), value); }
+function resolveReplyTarget(threadId: string, value: unknown): Message | undefined { return replyTargetIn(() => store.messagesFor(threadId), value); }
 
 /** The name the person gave an attachment, from the newest of this thread's messages that carries its exact tag. */
 function attachmentNameInThread(threadId: string, path: string): string | null {

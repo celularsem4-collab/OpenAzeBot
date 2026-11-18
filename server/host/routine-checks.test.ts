@@ -108,6 +108,8 @@ describe("a routine's checks", () => {
     const s = setup();
     s.mail("a", 5);
     const first = await s.checks.check(s.routine(), { manual: false });
+    s.advance(15 * MINUTE);
+    await s.checks.check(s.routine(), { manual: false, hold: "running" });
     s.checks.settled(run(first.run!.key, "failed"));
     s.advance(15 * MINUTE);
     const again = await s.checks.check(s.routine(), { manual: false });

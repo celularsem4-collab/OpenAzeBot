@@ -260,7 +260,7 @@ describe("a reply to an app", () => {
 
   it("finds a reply target among text, widget and app rows with words in them", () => {
     const rows = [message({ id: "t1" }), page(), message({ id: "o1", kind: "options", text: "Pick" }), page({ id: "a3", text: "" })];
-    expect(replyTargetIn(rows, undefined)).toBeUndefined();
+    expect(replyTargetIn(() => { throw new Error("unexpected transcript load"); }, undefined)).toBeUndefined();
     expect(replyTargetIn(rows, "")).toBeUndefined();
     expect(replyTargetIn(rows, "a1")?.kind).toBe("app");
     expect(replyTargetIn(rows, "t1")?.kind).toBe("text");

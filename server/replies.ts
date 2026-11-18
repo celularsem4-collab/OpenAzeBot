@@ -44,10 +44,11 @@ export type ReplyTarget = Message & {
   reactedWith?: string;
 };
 
-export function replyTargetIn(messages: readonly Message[], value: unknown): Message | undefined {
+export function replyTargetIn(messages: readonly Message[] | (() => readonly Message[]), value: unknown): Message | undefined {
   if (value === undefined || value === null || value === "") return undefined;
   if (typeof value !== "string") throw Object.assign(new Error("replyToId must be a message id"), { status: 400 });
-  const target = messages.find((message) => message.id === value);
+  const rows = typeof messages === "function" ? messages() : messages;
+  const target = rows.findLast((message) => message.id === value);
   if (!target || (target.kind !== "text" && target.kind !== "widget" && target.kind !== "app") || !target.text?.trim()) {
     throw Object.assign(new Error("the message being replied to is no longer available"), { status: 404 });
   }

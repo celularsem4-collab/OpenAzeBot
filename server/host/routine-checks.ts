@@ -265,7 +265,8 @@ export function createRoutineChecks(deps: RoutineChecksDeps): RoutineChecks & {
         const judged = new Set([...(entry.judged ?? []), ...held]);
         const plan = planMail({ now: at, emails, judged });
         const waiting = plan.waiting.length;
-        const advanced = waiting || more ? undefined : at;
+        const heldMail = Object.values(entry.pending ?? {}).some((one) => one.mail.length > 0);
+        const advanced = waiting || more || heldMail ? undefined : at;
         const helpers = brief && deps.inbox?.ready() === true;
         if (helpers) report.helpersSort = true;
         const picked = helpers && plan.batch.length ? await deps.inbox!.triage(plan.batch, deps.dismissedFrom()) : null;
@@ -277,9 +278,7 @@ export function createRoutineChecks(deps: RoutineChecksDeps): RoutineChecks & {
           });
           entry.judged = keepNewest([...new Set([...(entry.judged ?? []), ...plan.batch.map((email) => email.id), ...plan.quiet.map((email) => email.id)])], MAX_JUDGED);
           if (plan.batch.length) deps.sorted?.(routine.id, plan.batch.length);
-          // Mail an earlier run still holds keeps the cursor back, so a failed run's mail is read again.
-          const heldMail = Object.values(entry.pending ?? {}).some((one) => one.mail.length > 0);
-          if (advanced !== undefined && !heldMail) entry.mailCursor = advanced;
+          if (advanced !== undefined) entry.mailCursor = advanced;
         } else if (helpers && plan.batch.length && !aiAllowed) {
           // The helper models did not answer this time and no fenced AI may sort: the mail waits for the next check.
         } else if (plan.batch.length && aiAllowed) {

@@ -1168,6 +1168,7 @@ export class Store {
     const path: Message[] = [];
     let cur = t.activeLeafId ? byId.get(t.activeLeafId) : undefined;
     while (cur) {
+      byId.delete(cur.id);
       path.push(cur);
       cur = cur.parentId ? byId.get(cur.parentId) : undefined;
     }
@@ -1281,21 +1282,28 @@ export class Store {
   setActiveLeaf(threadId: string, messageId: string): string | null {
     const t = this.thread(threadId);
     if (!t.messages.some((m) => m.id === messageId)) return null;
-    let cur = messageId;
-    for (;;) {
-      const children = t.messages.filter((m) => m.parentId === cur);
-      if (!children.length) break;
-      cur = children.reduce((a, b) => (b.at >= a.at ? b : a)).id;
+    const newestChild = new Map<string, Message>();
+    for (const message of t.messages) {
+      if (!message.parentId) continue;
+      const previous = newestChild.get(message.parentId);
+      if (!previous || message.at >= previous.at) newestChild.set(message.parentId, message);
     }
-    t.activeLeafId = cur;
+    let cur = messageId;
+    const seen = new Set<string>();
+    while (newestChild.has(cur)) {
+      if (seen.has(cur)) return null;
+      seen.add(cur);
+      cur = newestChild.get(cur)!.id;
+    }
     mdb.setActiveLeaf(threadId, cur);
+    t.activeLeafId = cur;
     this.emit({ type: "thread", threadId, activeLeafId: cur });
     return cur;
   }
 
   patchMessage(threadId: string, messageId: string, patch: Partial<Message>, command?: Command): Message | null {
     const t = this.thread(threadId);
-    const idx = t.messages.findIndex((m) => m.id === messageId);
+    const idx = t.messages.findLastIndex((m) => m.id === messageId);
     if (idx === -1) return null;
     const next = { ...t.messages[idx], ...patch, card: patch.card ?? t.messages[idx].card };
     // Persist before memory: a failed write must not mark a card answered that a restart shows pending.

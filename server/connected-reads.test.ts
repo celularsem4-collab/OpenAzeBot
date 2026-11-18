@@ -9,19 +9,19 @@ const fixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`./te
 
 /** One relay that answers like Composio's multi-execute tool, from `answers` by tool slug. */
 function relay(answers: Record<string, (args: Record<string, unknown>) => { successful: boolean; data?: unknown; error?: string }>) {
-  const frames: Array<{ method: string; session?: string; slug?: string; args?: Record<string, unknown>; item?: Record<string, unknown> }> = [];
+  const frames: Array<{ id?: string; method: string; session?: string; slug?: string; args?: Record<string, unknown>; item?: Record<string, unknown> }> = [];
   let sessions = 0;
   const deps = {
     connected: async () => ({ gmail: true, googlecalendar: true }),
     relay: async (payload: unknown, session: string | undefined) => {
-      const frame = payload as { method: string; params?: { arguments?: { tools?: Array<Record<string, unknown>> } } };
+      const frame = payload as { id?: string; method: string; params?: { arguments?: { tools?: Array<Record<string, unknown>> } } };
       const item = frame.params?.arguments?.tools?.[0];
-      frames.push({ method: frame.method, ...(session ? { session } : {}), ...(item ? { slug: String(item.tool_slug), args: item.arguments as Record<string, unknown>, item } : {}) });
+      frames.push({ id: frame.id, method: frame.method, ...(session ? { session } : {}), ...(item ? { slug: String(item.tool_slug), args: item.arguments as Record<string, unknown>, item } : {}) });
       if (frame.method === "initialize") return { status: 200, bytes: new TextEncoder().encode("{}"), transportSessionId: `s-${++sessions}` };
       if (frame.method !== "tools/call") return { status: 202, bytes: new Uint8Array() };
       const response = answers[String(item!.tool_slug)]!(item!.arguments as Record<string, unknown>);
       const text = JSON.stringify({ successful: true, data: { results: [{ tool_slug: item!.tool_slug, response }] } });
-      return { status: 200, bytes: new TextEncoder().encode(JSON.stringify({ jsonrpc: "2.0", id: "omb-check-call", result: { content: [{ type: "text", text }] } })) };
+      return { status: 200, bytes: new TextEncoder().encode(JSON.stringify({ jsonrpc: "2.0", id: frame.id, result: { content: [{ type: "text", text }] } })) };
     },
   };
   return { deps, frames };
@@ -77,8 +77,21 @@ describe("a check's reads", () => {
     expect(read.emails.map((email) => email.id)).toEqual(["b", "a"]);
     expect(frames.filter((frame) => frame.method === "initialize")).toHaveLength(1);
     expect(new Set(frames.filter((frame) => frame.method === "tools/call").map((frame) => frame.session))).toEqual(new Set(["s-1"]));
+    const calls = frames.filter((frame) => frame.method === "tools/call");
+    expect(new Set(calls.map((frame) => frame.id)).size).toBe(calls.length);
     for (const frame of frames.filter((one) => one.item)) expect(Object.keys(frame.item!).sort()).toEqual(["arguments", "tool_slug"]);
     expect(frames.find((frame) => frame.slug === "GMAIL_FETCH_EMAILS")!.args!.query).toContain("in:inbox after:");
+  });
+
+  it("rejects a tool response belonging to another request", async () => {
+    const { deps } = relay({ GMAIL_GET_PROFILE: () => ({ successful: true, data: { emailAddress: "me@x.test" } }) });
+    const session = createConnectedReads({ ...deps, relay: async (payload, transport) => {
+      const answer = await deps.relay(payload, transport);
+      if ((payload as { method: string }).method !== "tools/call") return answer;
+      const frame = JSON.parse(new TextDecoder().decode(answer.bytes));
+      return { ...answer, bytes: new TextEncoder().encode(JSON.stringify({ ...frame, id: "another-call" })) };
+    } }).session();
+    await expect(session.address()).rejects.toThrow("unexpected response id");
   });
 
   it("says more mail waits beyond the limit", async () => {
