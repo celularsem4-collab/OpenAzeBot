@@ -109,9 +109,9 @@ export function mergePreferences(dir: string, preferences: Record<string, unknow
 }
 
 /** A crash left behind is not offered back to anyone as a "restore pages?" bubble. */
-export function markCleanExit(dir: string): void {
+export function prepareProfileForLaunch(dir: string, restoreSession: boolean): void {
   if (!existsSync(join(dir, "Default", "Preferences"))) return;
-  mergePreferences(dir, { profile: { exit_type: "Normal", exited_cleanly: true } });
+  mergePreferences(dir, { profile: { exit_type: "Normal", exited_cleanly: true }, ...(restoreSession ? { session: { restore_on_startup: 1 } } : {}) });
 }
 
 /** The tabs Chrome would reopen, so a restart comes back on one blank tab; sign-ins stay. Chrome 153 keeps them in

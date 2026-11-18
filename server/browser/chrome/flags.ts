@@ -67,6 +67,8 @@ export interface ChromeFlagsInput {
   sandbox?: boolean;
   /** Null when session restore reopens the profile's tabs. */
   startUrl?: string | null;
+  /** App-owned persistent profiles restore session cookies as well as tabs. */
+  restoreSession?: boolean;
   /** A window only: where it opens, e.g. parked off-screen. */
   windowPosition?: { x: number; y: number } | null;
 }
@@ -116,6 +118,7 @@ export function chromeArgs(input: ChromeFlagsInput): string[] {
   if (input.host !== "desktop") args.push("--disk-cache-size=52428800");
   if (input.host === "container") args.push("--disable-dev-shm-usage");
   if (input.sandbox === false) args.push("--no-sandbox");
+  if (input.restoreSession) args.push("--restore-last-session");
   if (input.startUrl !== null) args.push(input.startUrl ?? "about:blank");
   return args;
 }

@@ -85,11 +85,16 @@ suite("the bots' browser service on real Chrome", () => {
 
   it("keeps a bot's sign-in when its browser closes and starts again", async () => {
     const target = bot();
-    const url = fx.route("/sign-in", { body: "<!doctype html><title>signed in</title><p>in</p>", headers: { "set-cookie": "sid=kept; Max-Age=3600; Path=/" } });
+    const url = fx.route("/sign-in", { body: "<!doctype html><title>signed in</title><script>document.cookie='session_verification=kept; Path=/; SameSite=Lax'; localStorage.setItem('verification', 'kept')</script><p>in</p>", headers: { "set-cookie": "sid=kept; Max-Age=3600; Path=/" } });
     await real.call(target, "agent_browser_open", { url });
+    expect(await real.read<string>(target, "document.cookie")).toContain("session_verification=kept");
+    expect(await real.read<string>(target, "localStorage.getItem('verification')")).toBe("kept");
+    fx.page("/sign-in", "<!doctype html><title>restored</title><p>no new session</p>");
     await real.service.close(target.session);
     await real.call(target, "agent_browser_open", { url: page("/after", "<p>after</p>") });
     expect(await real.read<string>(target, "document.cookie")).toContain("sid=kept");
+    expect(await real.read<string>(target, "document.cookie")).toContain("session_verification=kept");
+    expect(await real.read<string>(target, "localStorage.getItem('verification')")).toBe("kept");
   }, hostTimeout(90_000));
 
   it("erases a shared profile's folder, downloads and screenshots", async () => {
@@ -209,23 +214,36 @@ suite("the bots' browser service on real Chrome", () => {
 
   it("restarts on one blank tab and keeps sign-ins", async () => {
     const target = bot();
-    const url = fx.route("/restart-sign-in", { body: "<!doctype html><title>in</title><p>in</p>", headers: { "set-cookie": "restart=kept; Max-Age=3600; Path=/" } });
+    const url = fx.route("/restart-sign-in", { body: "<!doctype html><title>in</title><script>document.cookie='restart_verification=kept; Path=/; SameSite=Lax'; localStorage.setItem('restart_verification', 'kept')</script><p>in</p>", headers: { "set-cookie": "restart=kept; Max-Age=3600; Path=/" } });
     await real.call(target, "agent_browser_open", { url });
+    expect(await real.read<string>(target, "document.cookie")).toContain("restart_verification=kept");
+    expect(await real.read<string>(target, "localStorage.getItem('restart_verification')")).toBe("kept");
+    fx.page("/restart-sign-in", "<!doctype html><title>restored</title><p>no new session</p>");
     await real.call(target, "agent_browser_tabs", { action: "new", url: page("/restart-second", "<p>second</p>") });
+    const requestsBeforeRestart = fx.requests.filter((request) => /\/restart-(?:sign-in|second)$/.test(request)).length;
     expect(real.text(await real.call(target, "restart_browser"))).toContain("Browser restarted.");
     const after = await status(target);
     expect(after.tabs).toHaveLength(1);
     expect(after.url).toBeNull();
+    expect(fx.requests.filter((request) => /\/restart-(?:sign-in|second)$/.test(request))).toHaveLength(requestsBeforeRestart);
     await real.call(target, "agent_browser_open", { url: page("/restart-check", "<p>check</p>") });
     expect(await real.read<string>(target, "document.cookie")).toContain("restart=kept");
+    expect(await real.read<string>(target, "document.cookie")).toContain("restart_verification=kept");
+    expect(await real.read<string>(target, "localStorage.getItem('restart_verification')")).toBe("kept");
   }, hostTimeout(120_000));
 
   it("closes an unused browser, and its bot hears why on its next call", async () => {
     const target = bot();
-    await real.call(target, "agent_browser_open", { url: page("/idle", "<p>idle</p>") });
+    await real.call(target, "agent_browser_open", { url: page("/idle", "<script>document.cookie='idle_verification=kept; Path=/; SameSite=Lax'; localStorage.setItem('idle_verification', 'kept')</script><p>idle</p>") });
+    expect(await real.read<string>(target, "document.cookie")).toContain("idle_verification=kept");
+    expect(await real.read<string>(target, "localStorage.getItem('idle_verification')")).toBe("kept");
+    fx.page("/idle", "<!doctype html><title>restored</title><p>no new session</p>");
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(await real.service.closeIdle(1)).toContain(target.key);
     expect(real.text(await real.call(target, "agent_browser_status"))).toContain("Your browser sat unused and was closed to free memory");
+    await real.call(target, "agent_browser_open", { url: page("/idle-check", "<p>check</p>") });
+    expect(await real.read<string>(target, "document.cookie")).toContain("idle_verification=kept");
+    expect(await real.read<string>(target, "localStorage.getItem('idle_verification')")).toBe("kept");
   }, hostTimeout(90_000));
 });
 

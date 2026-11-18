@@ -72,6 +72,16 @@ describe("Chrome's command line", () => {
     expect(chromeArgs({ userDataDir: "/p", mode: "headless", host: "desktop", locale: "en-GB; rm -rf" })).not.toContain("--lang=en-GB; rm -rf");
   });
 
+  it("requests session restore only for a caller's persistent profile, including a restart on a blank page", () => {
+    const input = { userDataDir: "/p", mode: "headless" as const, host: "desktop" as const };
+    expect(chromeArgs(input)).not.toContain("--restore-last-session");
+    expect(chromeArgs({ ...input, restoreSession: false })).not.toContain("--restore-last-session");
+    expect(chromeArgs({ ...input, restoreSession: true, startUrl: null })).toContain("--restore-last-session");
+    const restarted = chromeArgs({ ...input, restoreSession: true, startUrl: "about:blank" });
+    expect(restarted).toContain("--restore-last-session");
+    expect(restarted.at(-1)).toBe("about:blank");
+  });
+
   it("sets the time zone on servers only, and marks the process for the sweep", () => {
     expect(chromeEnv({ PATH: "/bin" }, { host: "server", timezone: "Asia/Kolkata", profileMarker: "abc" })).toMatchObject({ PATH: "/bin", TZ: "Asia/Kolkata", OMB_BROWSER_PROFILE: "abc" });
     expect(chromeEnv({}, { host: "desktop", timezone: "Asia/Kolkata" }).TZ).toBeUndefined();

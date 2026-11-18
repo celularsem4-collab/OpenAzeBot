@@ -6325,6 +6325,10 @@ describe("harness HTTP API", () => {
       await stream.until((frame) => frame.kind === "computer-control" && frame.botId === bot.id && frame.help?.messageId === firstCard.messageId);
       expect(notices()).toHaveLength(1);
 
+      const duplicate = await request("https://example.com/login", "The same page still needs sign-in.");
+      expect(await duplicate.json()).toMatchObject({ messageId: firstCard.messageId });
+      expect(notices()).toHaveLength(1);
+
       const second = await request("www.example.com", "Still behind a login.");
       expect(second.status).toBe(201);
       const secondCard = await second.json() as { messageId: string };

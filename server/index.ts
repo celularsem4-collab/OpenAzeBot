@@ -11686,6 +11686,14 @@ function requestSignIn(from: BotRecord, threadId: string, rawSite: unknown, rawR
   if (!target) return { status: 400, error: "site must be a web address or a domain, such as example.com" };
   const place = signInPlace(from, threadId);
   if (!place) return { status: 409, error: "this conversation has no browser or computer for the person to sign in on" };
+  const controlKey = signInControlKey(from, threadId, place);
+  const pending = computerControl.snapshot(controlKey).help;
+  if (pending?.botId === from.id && pending.threadId === threadId && pending.site === target.site && pending.place === place) {
+    const card = signInMessage(from.id, threadId, pending.messageId);
+    if (card?.signIn?.url === target.url && isPendingSignInRequest(card, target.site, from.id, Boolean(owner.group))) {
+      return { messageId: card.id, site: target.site, place: place };
+    }
+  }
   const reason = typeof rawReason === "string" ? rawReason.trim().slice(0, 240) : "";
   const message = store.appendMessage(threadId, {
     role: "bot",
@@ -11699,7 +11707,7 @@ function requestSignIn(from: BotRecord, threadId: string, rawSite: unknown, rawR
     store.patchMessage(threadId, prior.id, { signIn: { ...prior.signIn, superseded: true } });
     computerControl.settleHelp(prior.id);
   }
-  computerControl.requestHelp(signInControlKey(from, threadId, place), `sign in to ${target.site}`,
+  computerControl.requestHelp(controlKey, `sign in to ${target.site}`,
     { botId: from.id, threadId, messageId: message.id, site: target.site, place });
   notify(buildNotification("sign-in", { ...from, threadId }, threadId, reason || `Open OpenMausBot to sign in to ${target.site}.`, {
     avatarUrl: from.avatarUrl,

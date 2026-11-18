@@ -8,7 +8,7 @@ import { fitPage, pageLimit, type BrowserMode, type HostKind, type ScreenSpec } 
 import { launchChrome, type ChromeProcess, type LaunchOptions } from "./chrome/launch.ts";
 import { clearSingleton, staleSingletonLock, type ProcessRegistry } from "./chrome/processes.ts";
 import { languageList } from "./chrome/wrapper.ts";
-import { downgradeRefusal, ensureProfile, forgetOpenTabs, markCleanExit, profileDir, profileHash, recordOpenedBy, versionOf, workspaceId } from "./chrome/profile.ts";
+import { downgradeRefusal, ensureProfile, forgetOpenTabs, prepareProfileForLaunch, profileDir, profileHash, profileKind, recordOpenedBy, versionOf, workspaceId } from "./chrome/profile.ts";
 
 export type BackendKind = "local" | "my-chrome" | "cdp-url";
 
@@ -109,7 +109,9 @@ export class LocalBackend implements Backend {
     const refusal = downgradeRefusal(record, binaryVersion);
     if (refusal) throw new Error(refusal);
     if (staleSingletonLock(dir)) clearSingleton(dir);
-    markCleanExit(dir);
+    const kind = profileKind(request.key);
+    const restoreSession = kind === "bot" || kind === "shared";
+    prepareProfileForLaunch(dir, restoreSession);
     if (request.fresh) forgetOpenTabs(dir);
     const headless = request.mode === "headless";
     const locale = options.locale?.() ?? null;
@@ -129,6 +131,8 @@ export class LocalBackend implements Backend {
       egressPort,
       sandbox: options.sandbox ?? true,
       startUrl: request.fresh || created ? "about:blank" : null,
+      // Installed Chrome 155 on Windows drops session cookies despite restore_on_startup=1 in Preferences.
+      restoreSession,
       viewport,
       timezone: options.timezone?.() ?? null,
       sandboxHelper: options.sandboxHelper ?? null,

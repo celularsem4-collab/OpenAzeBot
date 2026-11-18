@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { removeTempDir } from "../testing/cleanup.ts";
 import { LocalBackend } from "./backends.ts";
-import type { ChromeProcess } from "./chrome/launch.ts";
+import type { ChromeProcess, LaunchOptions } from "./chrome/launch.ts";
 import { ProcessRegistry } from "./chrome/processes.ts";
 import { browserRoot, profileDir } from "./chrome/profile.ts";
 import { FAKE_IDENTITY, FakeChrome } from "./testing/fake-chrome.ts";
@@ -18,6 +18,7 @@ function backend(platform: NodeJS.Platform) {
   const dataDir = mkdtempSync(join(tmpdir(), "omb-backends-test-"));
   folders.push(dataDir);
   const chromes: FakeChrome[] = [];
+  const launches: LaunchOptions[] = [];
   const local = new LocalBackend({
     dataDir,
     host: "desktop",
@@ -25,7 +26,8 @@ function backend(platform: NodeJS.Platform) {
     binary: async () => ({ path: "/fake/chrome", identity: { ...FAKE_IDENTITY } }),
     screen: async () => ({ width: 1920, height: 1080, deviceScaleFactor: 1 }),
     egressPort: async () => null,
-    launch: async () => {
+    launch: async options => {
+      launches.push(options);
       const chrome = new FakeChrome({ navigationErrors: ["net::ERR_ABORTED"] });
       chromes.push(chrome);
       const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => chrome.onClose(() => resolve({ code: 0, signal: null })));
@@ -36,8 +38,8 @@ function backend(platform: NodeJS.Platform) {
       return launched;
     },
   });
-  const open = () => local.open({ key: "bot:warm", mode: "headless", fresh: false, viewport: { width: 1280, height: 800 }, downloadDir: join(dataDir, "downloads") });
-  return { open, chromes };
+  const open = (key = "bot:warm", fresh = false) => local.open({ key, mode: "headless", fresh, viewport: { width: 1280, height: 800 }, downloadDir: join(dataDir, "downloads") });
+  return { open, chromes, launches };
 }
 
 describe("a fresh profile's first navigation on Windows", () => {
@@ -70,6 +72,15 @@ describe("a fresh profile's first navigation on Windows", () => {
 });
 
 describe("a local browser's profile folder", () => {
+  it("restores session cookies for owned bot and shared profiles, including restart, but not temporary profiles", async () => {
+    const local = backend("darwin");
+    for (const [key, fresh] of [["bot:saved", false], ["bot:saved", true], ["shared:team", false], ["temp:guest", false]] as const) {
+      await (await local.open(key, fresh)).close();
+    }
+    expect(local.launches.map(options => options.restoreSession)).toEqual([true, true, true, false]);
+    expect(local.launches[1]?.startUrl).toBe("about:blank");
+  });
+
   it("is held from the sweep while Chrome starts, and let go when the start fails", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "omb-backends-test-"));
     folders.push(dataDir);

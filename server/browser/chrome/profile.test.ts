@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { removeTempDir } from "../../testing/cleanup.ts";
-import { browserRoot, compareVersions, downgradeRefusal, ensureProfile, markCleanExit, profileDir, profileHash, recordOpenedBy, versionOf, workspaceId } from "./profile.ts";
+import { browserRoot, compareVersions, downgradeRefusal, ensureProfile, prepareProfileForLaunch, profileDir, profileHash, recordOpenedBy, versionOf, workspaceId } from "./profile.ts";
 
 const dirs: string[] = [];
 const scratch = () => {
@@ -46,11 +46,11 @@ describe("profiles", () => {
       intl: { accept_languages: "en-IN,en" },
     });
     expect(made.record).toMatchObject({ key: "bot:alice", backend: "local", egress: "direct", chromeVersion: null, createdAt: "2026-10-15T00:00:00.000Z" });
-    writeFileSync(join(made.dir, "Default", "Preferences"), JSON.stringify({ ...preferences, profile: { ...preferences.profile, exit_type: "Crashed" }, extra: 1 }));
+    writeFileSync(join(made.dir, "Default", "Preferences"), JSON.stringify({ ...preferences, session: { unrelated: 42 }, profile: { ...preferences.profile, exit_type: "Crashed" }, extra: 1 }));
     expect(ensureProfile(data, "bot:alice").created).toBe(false);
-    markCleanExit(made.dir);
+    prepareProfileForLaunch(made.dir, true);
     const after = JSON.parse(readFileSync(join(made.dir, "Default", "Preferences"), "utf8"));
-    expect(after).toMatchObject({ extra: 1, profile: { exit_type: "Normal", exited_cleanly: true, password_manager_enabled: false } });
+    expect(after).toMatchObject({ extra: 1, session: { unrelated: 42, restore_on_startup: 1 }, profile: { exit_type: "Normal", exited_cleanly: true, password_manager_enabled: false } });
   });
 
   it("refuses to let an older Chrome open a profile a newer one wrote", () => {
